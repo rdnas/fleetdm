@@ -1,0 +1,9 @@
+# chart-testing config: https://github.com/helm/chart-testing
+remote: origin
+target-branch: main
+chart-dirs:
+  - charts
+check-version-increment: true
+# Maintainer names are not GitHub usernames.
+validate-maintainers: false
+helm-extra-args: --timeout 600s

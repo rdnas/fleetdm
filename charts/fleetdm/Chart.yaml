@@ -1,0 +1,20 @@
+apiVersion: v2
+name: fleetdm
+description: Fleet device management server with bundled MySQL and Redis, for single-node clusters such as Minikube.
+type: application
+# SemVer; bump on every chart change (enforced by ct check-version-increment).
+version: 0.1.0
+appVersion: "v4.95.0"
+kubeVersion: ">=1.27.0-0"
+home: https://fleetdm.com
+sources:
+  - https://github.com/fleetdm/fleet
+keywords:
+  - fleet
+  - fleetdm
+  - osquery
+  - device-management
+maintainers:
+  - name: fleetdm-chart maintainers
+annotations:
+  artifacthub.io/license: MIT

@@ -1,0 +1,130 @@
+{{- $mysqlHost := include "fleetdm.mysql.fullname" . }}
+{{- $redisHost := include "fleetdm.redis.fullname" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "fleetdm.fleet.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "fleetdm.componentLabels" (dict "ctx" . "component" "fleet") | nindent 4 }}
+spec:
+  replicas: {{ .Values.fleet.replicas }}
+  {{- with .Values.fleet.strategy }}
+  strategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "fleetdm.componentSelectorLabels" (dict "ctx" . "component" "fleet") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "fleetdm.componentLabels" (dict "ctx" . "component" "fleet") | nindent 8 }}
+      {{- with .Values.fleet.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.fleet.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: wait-for-deps
+          image: "{{ .Values.fleet.waitForDeps.image.repository }}:{{ .Values.fleet.waitForDeps.image.tag }}"
+          imagePullPolicy: {{ .Values.fleet.waitForDeps.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              deadline=$(( $(date +%s) + {{ int .Values.fleet.waitForDeps.timeoutSeconds }} ))
+              for target in {{ $mysqlHost }}:3306 {{ $redisHost }}:6379; do
+                host=${target%:*}; port=${target#*:}
+                until nc -z -w 2 "$host" "$port"; do
+                  if [ "$(date +%s)" -ge "$deadline" ]; then
+                    echo "timed out waiting for $target"; exit 1
+                  fi
+                  echo "waiting for $target"; sleep 2
+                done
+                echo "$target is reachable"
+              done
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 32Mi
+          {{- with .Values.fleet.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        {{- if .Values.fleet.autoApplySQLMigrations }}
+        - name: prepare-db
+          image: {{ include "fleetdm.fleet.image" . | quote }}
+          imagePullPolicy: {{ .Values.fleet.image.pullPolicy }}
+          command: ["/usr/bin/fleet", "prepare", "db", "--no-prompt"]
+          env:
+            {{- include "fleetdm.fleet.env" . | nindent 12 }}
+          {{- with .Values.fleet.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.fleet.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+        {{- end }}
+      containers:
+        - name: fleet
+          image: {{ include "fleetdm.fleet.image" . | quote }}
+          imagePullPolicy: {{ .Values.fleet.image.pullPolicy }}
+          command: ["/usr/bin/fleet", "serve"]
+          env:
+            {{- include "fleetdm.fleet.env" . | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.fleet.listenPort }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            {{- toYaml .Values.fleet.livenessProbe | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            {{- toYaml .Values.fleet.readinessProbe | nindent 12 }}
+          {{- with .Values.fleet.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.fleet.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.fleet.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.fleet.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.fleet.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

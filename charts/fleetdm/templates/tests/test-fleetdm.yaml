@@ -1,0 +1,73 @@
+{{- $mysqlHost := include "fleetdm.mysql.fullname" . }}
+{{- $redisHost := include "fleetdm.redis.fullname" . }}
+{{- $securityContext := dict "allowPrivilegeEscalation" false "readOnlyRootFilesystem" true "capabilities" (dict "drop" (list "ALL")) }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "fleetdm.fullname" . }}-test
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "fleetdm.componentLabels" (dict "ctx" . "component" "test") | nindent 4 }}
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  {{- with .Values.imagePullSecrets }}
+  imagePullSecrets:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 999
+    runAsGroup: 999
+    seccompProfile:
+      type: RuntimeDefault
+  # All three containers must exit 0 for the test to pass.
+  containers:
+    - name: fleet-healthz
+      image: "{{ .Values.tests.image.curl.repository }}:{{ .Values.tests.image.curl.tag }}"
+      command:
+        - curl
+        - --fail
+        - --silent
+        - --show-error
+        - --retry
+        - "10"
+        - --retry-all-errors
+        - --retry-delay
+        - "3"
+        - http://{{ include "fleetdm.fleet.fullname" . }}:{{ .Values.service.port }}/healthz
+      securityContext:
+        {{- toYaml $securityContext | nindent 8 }}
+    - name: mysql-ping
+      image: "{{ .Values.mysql.image.repository }}:{{ .Values.mysql.image.tag }}"
+      command:
+        - sh
+        - -c
+        - MYSQL_PWD="$MYSQL_PASSWORD" mysqladmin ping -h {{ $mysqlHost }} -u {{ .Values.mysql.username }} --connect-timeout=10
+      env:
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "fleetdm.mysql.secretName" . }}
+              key: mysql-password
+      securityContext:
+        {{- toYaml $securityContext | nindent 8 }}
+    - name: redis-ping
+      image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
+      command:
+        - sh
+        - -c
+        - redis-cli -h {{ $redisHost }} ping | grep -q PONG
+      {{- if .Values.redis.auth.enabled }}
+      env:
+        - name: REDISCLI_AUTH
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "fleetdm.redis.secretName" . }}
+              key: redis-password
+      {{- end }}
+      securityContext:
+        {{- toYaml $securityContext | nindent 8 }}

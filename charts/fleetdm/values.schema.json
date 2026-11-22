@@ -1,0 +1,157 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "fleetdm chart values",
+  "type": "object",
+  "definitions": {
+    "image": {
+      "type": "object",
+      "required": ["repository", "tag"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": { "type": "string" },
+        "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+      }
+    },
+    "persistence": {
+      "type": "object",
+      "required": ["size"],
+      "properties": {
+        "size": { "type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?(Ki|Mi|Gi|Ti|Pi|Ei|k|M|G|T|P|E)?$" },
+        "storageClass": { "type": "string" },
+        "accessModes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "enum": ["ReadWriteOnce", "ReadOnlyMany", "ReadWriteMany", "ReadWriteOncePod"] }
+        }
+      }
+    },
+    "pvcRetention": {
+      "type": "object",
+      "properties": {
+        "whenDeleted": { "type": "string", "enum": ["Retain", "Delete"] },
+        "whenScaled": { "type": "string", "enum": ["Retain", "Delete"] }
+      }
+    },
+    "scheduling": {
+      "type": "object",
+      "properties": {
+        "resources": { "type": "object" },
+        "podSecurityContext": { "type": "object" },
+        "securityContext": { "type": "object" },
+        "podAnnotations": { "type": "object" },
+        "nodeSelector": { "type": "object" },
+        "tolerations": { "type": "array" },
+        "affinity": { "type": "object" }
+      }
+    },
+    "probe": {
+      "type": "object",
+      "properties": {
+        "initialDelaySeconds": { "type": "integer", "minimum": 0 },
+        "periodSeconds": { "type": "integer", "minimum": 1 },
+        "timeoutSeconds": { "type": "integer", "minimum": 1 },
+        "failureThreshold": { "type": "integer", "minimum": 1 }
+      }
+    }
+  },
+  "properties": {
+    "nameOverride": { "type": "string" },
+    "fullnameOverride": { "type": "string" },
+    "commonLabels": { "type": "object", "additionalProperties": { "type": "string" } },
+    "imagePullSecrets": { "type": "array" },
+    "fleet": {
+      "allOf": [{ "$ref": "#/definitions/scheduling" }],
+      "type": "object",
+      "required": ["image", "replicas", "listenPort"],
+      "properties": {
+        "image": { "$ref": "#/definitions/image" },
+        "replicas": { "type": "integer", "minimum": 0 },
+        "strategy": {
+          "type": "object",
+          "properties": { "type": { "type": "string", "enum": ["Recreate", "RollingUpdate"] } }
+        },
+        "autoApplySQLMigrations": { "type": "boolean" },
+        "listenPort": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "logging": {
+          "type": "object",
+          "properties": {
+            "json": { "type": "boolean" },
+            "debug": { "type": "boolean" }
+          }
+        },
+        "osqueryLogPlugin": { "type": "string", "enum": ["stdout", "filesystem"] },
+        "existingSecret": { "type": "string" },
+        "extraEnv": { "type": "array" },
+        "livenessProbe": { "$ref": "#/definitions/probe" },
+        "readinessProbe": { "$ref": "#/definitions/probe" },
+        "waitForDeps": {
+          "type": "object",
+          "properties": {
+            "image": { "$ref": "#/definitions/image" },
+            "timeoutSeconds": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    },
+    "mysql": {
+      "allOf": [{ "$ref": "#/definitions/scheduling" }],
+      "type": "object",
+      "required": ["image", "database", "username", "persistence"],
+      "properties": {
+        "image": { "$ref": "#/definitions/image" },
+        "database": { "type": "string", "minLength": 1 },
+        "username": { "type": "string", "minLength": 1, "not": { "const": "root" } },
+        "existingSecret": { "type": "string" },
+        "extraArgs": { "type": "array", "items": { "type": "string" } },
+        "persistence": { "$ref": "#/definitions/persistence" },
+        "persistentVolumeClaimRetentionPolicy": { "$ref": "#/definitions/pvcRetention" }
+      }
+    },
+    "redis": {
+      "allOf": [{ "$ref": "#/definitions/scheduling" }],
+      "type": "object",
+      "required": ["image", "persistence"],
+      "properties": {
+        "image": { "$ref": "#/definitions/image" },
+        "auth": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "existingSecret": { "type": "string" }
+          }
+        },
+        "persistence": { "$ref": "#/definitions/persistence" },
+        "persistentVolumeClaimRetentionPolicy": { "$ref": "#/definitions/pvcRetention" }
+      }
+    },
+    "service": {
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer"] },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "annotations": { "type": "object" }
+      }
+    },
+    "ingress": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "className": { "type": "string" },
+        "annotations": { "type": "object" },
+        "hosts": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "tls": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "selfSigned": { "type": "boolean" },
+            "secretName": { "type": "string", "minLength": 1 },
+            "extraIPs": { "type": "array", "items": { "type": "string" } },
+            "caCommonName": { "type": "string", "minLength": 1 },
+            "validityDays": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    },
+    "tests": { "type": "object" }
+  }
+}

@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "fleetdm.mysql.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "fleetdm.componentLabels" (dict "ctx" . "component" "mysql") | nindent 4 }}
+spec:
+  clusterIP: None
+  selector:
+    {{- include "fleetdm.componentSelectorLabels" (dict "ctx" . "component" "mysql") | nindent 4 }}
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: mysql

@@ -1,0 +1,186 @@
+# -- Override the chart name used in resource names
+nameOverride: ""
+# -- Override the full resource name prefix (defaults to <release>-<chart>, or <release> if it already contains the chart name)
+fullnameOverride: ""
+# -- Extra labels added to every resource
+commonLabels: {}
+# -- Image pull secrets for all pods
+imagePullSecrets: []
+
+fleet:
+  image:
+    repository: fleetdm/fleet
+    # -- Defaults to the chart appVersion
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicas: 1
+  # -- Recreate guarantees two pods never run migrations concurrently
+  strategy:
+    type: Recreate
+  # -- Run `fleet prepare db --no-prompt` in an init container before every start (creates the schema, applies new migrations)
+  autoApplySQLMigrations: true
+  listenPort: 8080
+  logging:
+    json: true
+    debug: false
+  # -- Where osquery status/result logs go (stdout keeps them in the pod logs; filesystem writes under /tmp)
+  osqueryLogPlugin: stdout
+  # -- Existing Secret with key `server-private-key` (>= 32 chars). If empty, one is generated and kept across upgrades.
+  existingSecret: ""
+  # -- Extra environment variables for the Fleet container (e.g. FLEET_LICENSE_KEY)
+  extraEnv: []
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 3333
+    runAsGroup: 3333
+    fsGroup: 3333
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: [ALL]
+  livenessProbe:
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6
+  readinessProbe:
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 5
+    failureThreshold: 3
+  waitForDeps:
+    image:
+      repository: busybox
+      tag: "1.38.0"
+      pullPolicy: IfNotPresent
+    # -- Give up after this many seconds
+    timeoutSeconds: 600
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+mysql:
+  image:
+    repository: mysql
+    tag: "8.0.46"
+    pullPolicy: IfNotPresent
+  database: fleet
+  username: fleet
+  # -- Existing Secret with keys `mysql-password` and `mysql-root-password`. If empty, they are generated and kept across upgrades.
+  existingSecret: ""
+  # -- Extra mysqld flags (Fleet stores large MDM packages)
+  extraArgs:
+    - --max_allowed_packet=536870912
+    - --binlog-expire-logs-seconds=259200
+  persistence:
+    size: 10Gi
+    # -- Empty uses the cluster default StorageClass
+    storageClass: ""
+    accessModes: [ReadWriteOnce]
+  # -- What happens to the PVC when the StatefulSet is deleted / scaled down
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Delete
+    whenScaled: Retain
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      memory: 2Gi
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 999
+    runAsGroup: 999
+    fsGroup: 999
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: [ALL]
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+redis:
+  image:
+    repository: redis
+    tag: "7.4.12-alpine"
+    pullPolicy: IfNotPresent
+  auth:
+    # -- Require a password (FLEET_REDIS_PASSWORD / REDISCLI_AUTH)
+    enabled: true
+    # -- Existing Secret with key `redis-password`. If empty, one is generated and kept across upgrades.
+    existingSecret: ""
+  persistence:
+    size: 1Gi
+    storageClass: ""
+    accessModes: [ReadWriteOnce]
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Delete
+    whenScaled: Retain
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 512Mi
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 999
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: [ALL]
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+service:
+  type: ClusterIP
+  port: 8080
+  annotations: {}
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "512m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+  # -- Hostnames served by the Ingress; also the SANs of the self-signed certificate
+  hosts:
+    - fleet.fleetdm.internal
+  tls:
+    enabled: true
+    # -- Generate a CA and a server certificate (genCA/genSignedCert), kept across upgrades. If false, secretName must already exist.
+    selfSigned: true
+    secretName: fleet-tls-secret
+    # -- Extra IP SANs for the server certificate
+    extraIPs: []
+    caCommonName: fleetdm-ca
+    validityDays: 3650
+
+tests:
+  image:
+    curl:
+      repository: curlimages/curl
+      tag: "8.23.0"

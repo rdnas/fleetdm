@@ -1,0 +1,23 @@
+# Used by `ct install` on kind: no ingress controller and no TLS there, smaller footprint.
+ingress:
+  enabled: true
+  tls:
+    enabled: false
+
+fleet:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+mysql:
+  persistence:
+    size: 2Gi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+
+redis:
+  persistence:
+    size: 256Mi

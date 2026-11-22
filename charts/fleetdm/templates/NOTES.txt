@@ -1,0 +1,29 @@
+Fleet {{ .Chart.AppVersion }} has been deployed as release "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+{{- if .Values.fleet.autoApplySQLMigrations }}
+Database migrations run in the "prepare-db" init container on every Fleet pod start:
+  kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "fleetdm.fleet.fullname" . }} -c prepare-db
+{{- end }}
+
+{{- if .Values.ingress.enabled }}
+{{- $scheme := ternary "https" "http" .Values.ingress.tls.enabled }}
+
+Fleet UI:
+{{- range .Values.ingress.hosts }}
+  {{ $scheme }}://{{ . }}
+{{- end }}
+{{- if and .Values.ingress.tls.enabled .Values.ingress.tls.selfSigned }}
+
+The certificate is signed by a chart-generated CA. Export it for browsers, fleetctl and agents:
+  kubectl -n {{ .Release.Namespace }} get secret {{ .Values.ingress.tls.secretName }} \
+    -o jsonpath='{.data.ca\.crt}' | base64 -d > fleet-ca.pem
+  curl --cacert fleet-ca.pem {{ $scheme }}://{{ first .Values.ingress.hosts }}/healthz
+{{- end }}
+{{- else }}
+
+Ingress is disabled. Reach Fleet with a port-forward:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "fleetdm.fleet.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
+  open http://localhost:{{ .Values.service.port }}
+{{- end }}
+
+Verify the release (Fleet /healthz, mysqladmin ping, redis-cli ping):
+  helm test {{ .Release.Name }} -n {{ .Release.Namespace }}

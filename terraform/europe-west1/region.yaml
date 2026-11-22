@@ -1,0 +1,7 @@
+name: europe-west1
+zone: europe-west1-b
+network: fleetdm-vpc
+subnetwork: fleetdm-europe-west1
+subnet_cidr: 10.10.0.0/24
+vpn_client_cidr: 10.8.0.0/24
+admin_cidrs: ["1.1.1.1/32"]

@@ -1,0 +1,6 @@
+project_id: "<gcp-project-id>"
+state_bucket: "<tf-state-bucket>"
+dns_domain: "fleetdm.internal"
+labels:
+  env: fleetdm
+  managed-by: terragrunt
